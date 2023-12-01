@@ -12,6 +12,7 @@ from collections.abc import Generator
 from types import TracebackType
 from typing import Any
 from typing import Callable
+from typing import cast
 
 from pre_commit import parse_shebang
 
@@ -207,9 +208,12 @@ def rmtree(path: str) -> None:
     def handle_remove_readonly(
             func: Callable[..., Any],
             path: str,
-            exc: tuple[type[OSError], OSError, TracebackType],
+            exc: tuple[type[OSError], OSError, TracebackType] | BaseException,
     ) -> None:
-        excvalue = exc[1]
+        excvalue = cast(
+            OSError,
+            exc if isinstance(exc, BaseException) else exc[1],
+        )
         if (
                 func in (os.rmdir, os.remove, os.unlink) and
                 excvalue.errno in {errno.EACCES, errno.EPERM}
@@ -219,7 +223,19 @@ def rmtree(path: str) -> None:
             func(path)
         else:
             raise
-    shutil.rmtree(path, ignore_errors=False, onerror=handle_remove_readonly)
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(  # pragma: no cover
+            path,
+            ignore_errors=False,
+            onexc=handle_remove_readonly,
+        )
+    else:
+        shutil.rmtree(  # pragma: no cover
+            path,
+            ignore_errors=False,
+            onerror=handle_remove_readonly,
+        )
 
 
 def win_exe(s: str) -> str:
